@@ -1296,12 +1296,19 @@ handle_netdev(struct __ctx_buff *ctx, const bool from_host)
 __section_entry
 int cil_from_netdev(struct __ctx_buff *ctx)
 {
-	__u32 src_id = 0;
+	int __maybe_unused ret;
+	__u32 __maybe_unused flags;
+	__u32 __maybe_unused src_id = 0;
+
+#if defined(ENABLE_IPSEC) && defined(TUNNEL_MODE)
+	/* Punt to stack if the packet needs decryption. */
+	if (ctx->mark == MARK_MAGIC_DECRYPT)
+		return CTX_ACT_OK;
+#endif /* ENABLE_IPSEC && TUNNEL_MODE */
 
 #ifdef ENABLE_NODEPORT_ACCELERATION
-	__u32 flags = ctx_get_xfer(ctx, XFER_FLAGS);
+	flags = ctx_get_xfer(ctx, XFER_FLAGS);
 #endif
-	int ret;
 
 	/* Filter allowed vlan id's and pass them back to kernel.
 	 * We will see the packet again in from-netdev@eth0.vlanXXX.
