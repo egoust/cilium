@@ -587,8 +587,7 @@ func ipSecReplaceStateOut(log *slog.Logger, params *IPSecParameters) (uint8, err
 	return key.Spi, xfrmStateReplace(log, state, params.RemoteRebooted)
 }
 
-func _ipSecReplacePolicyIn(params *IPSecParameters, proxyMark bool, dir netlink.Dir) error {
-	optional := int(0)
+func ipSecReplacePolicyIn(params *IPSecParameters) error {
 	// We can use the global IPsec key here because we are not going to
 	// actually use the secret itself.
 	key := getGlobalIPsecKey(params.DestSubnet.IP)
@@ -598,45 +597,18 @@ func _ipSecReplacePolicyIn(params *IPSecParameters, proxyMark bool, dir netlink.
 	key.ReqID = params.ReqID
 
 	wildcardIP := wildcardIPv4
+	wildcardCIDR := wildcardCIDRv4
 	if params.SourceTunnelIP.To4() == nil {
 		wildcardIP = wildcardIPv6
+		wildcardCIDR = wildcardCIDRv6
 	}
 
-	tmplSrc := params.SourceTunnelIP
-	tmplDst := params.DestTunnelIP
 	policy := ipSecNewPolicy()
-	policy.Dir = dir
-	if dir == netlink.XFRM_DIR_IN {
-		policy.Src = params.SourceSubnet
-		policy.Dst = params.DestSubnet
-		policy.Mark = &netlink.XfrmMark{
-			Mask: linux_defaults.IPsecMarkBitMask,
-		}
-		if proxyMark {
-			// We require a policy to match on packets going to the proxy which are
-			// therefore carrying the proxy mark. We however don't need a policy
-			// for the encrypted packets because there is already a state matching
-			// them.
-			policy.Mark.Value = linux_defaults.RouteMarkToProxy
-			// We must mark the IN policy for the proxy optional simply because it
-			// is lacking a corresponding state.
-			optional = 1
-			// We set the source tmpl address to 0/0 to explicit that it
-			// doesn't matter.
-			tmplSrc = &wildcardIP
-		} else {
-			policy.Mark.Value = linux_defaults.RouteMarkDecrypt
-		}
-	}
-	ipSecAttachPolicyTempl(policy, key, *tmplSrc, *tmplDst, false, optional)
+	policy.Dir = netlink.XFRM_DIR_IN
+	policy.Src = wildcardCIDR
+	policy.Dst = wildcardCIDR
+	ipSecAttachPolicyTempl(policy, key, wildcardIP, wildcardIP, false, 1)
 	return netlink.XfrmPolicyUpdate(policy)
-}
-
-func ipSecReplacePolicyIn(params *IPSecParameters) error {
-	if err := _ipSecReplacePolicyIn(params, true, netlink.XFRM_DIR_IN); err != nil {
-		return err
-	}
-	return _ipSecReplacePolicyIn(params, false, netlink.XFRM_DIR_IN)
 }
 
 func IpSecReplacePolicyFwd(params *IPSecParameters) error {
